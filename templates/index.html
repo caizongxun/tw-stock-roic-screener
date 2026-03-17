@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股 ROIC 選股系統</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3e;
+    --accent: #e8534b;
+    --accent2: #4b9ce8;
+    --green: #2ecc71;
+    --red: #e74c3c;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', 'PingFang TC', sans-serif; min-height: 100vh; }
+
+  /* Navbar */
+  .navbar { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
+  .navbar .logo { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+  .navbar .nav-tabs { display: flex; gap: 0; }
+  .nav-tab { padding: 0 1.2rem; height: 56px; display: flex; align-items: center; cursor: pointer; color: var(--muted); font-size: 0.9rem; border-bottom: 2px solid transparent; transition: all .2s; }
+  .nav-tab.active, .nav-tab:hover { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* Layout */
+  .container { max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.5rem; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Cards */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.2rem; }
+  .card h3 { font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1rem; }
+
+  /* Grid */
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media(max-width: 768px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+  /* Stat Cards */
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.2rem 1.5rem; }
+  .stat-card .label { font-size: 0.78rem; color: var(--muted); margin-bottom: .4rem; }
+  .stat-card .value { font-size: 1.8rem; font-weight: 700; }
+  .stat-card .value.pos { color: var(--green); }
+  .stat-card .value.neg { color: var(--red); }
+  .stat-card .value.blue { color: var(--accent2); }
+
+  /* Form Controls */
+  .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+  .form-group { display: flex; flex-direction: column; gap: .4rem; min-width: 180px; }
+  .form-group label { font-size: 0.8rem; color: var(--muted); }
+  .form-group input, .form-group select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: .5rem .8rem; font-size: 0.9rem; width: 100%;
+    transition: border-color .2s;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent2); }
+  .form-group input[type=range] { padding: .3rem 0; cursor: pointer; accent-color: var(--accent); }
+  .range-val { font-size: 0.85rem; color: var(--accent); font-weight: 600; margin-left: .5rem; }
+
+  /* Buttons */
+  .btn { padding: .6rem 1.4rem; border-radius: 8px; border: none; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all .2s; display: inline-flex; align-items: center; gap: .5rem; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #d44840; transform: translateY(-1px); }
+  .btn-secondary { background: var(--accent2); color: #fff; }
+  .btn-secondary:hover { background: #3a8bd6; transform: translateY(-1px); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  /* Badge */
+  .badge { display: inline-block; padding: .2rem .6rem; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+  .badge-green { background: rgba(46,204,113,.15); color: var(--green); }
+  .badge-red { background: rgba(231,76,60,.15); color: var(--red); }
+  .badge-blue { background: rgba(75,156,232,.15); color: var(--accent2); }
+  .badge-yellow { background: rgba(241,196,15,.15); color: #f1c40f; }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { background: rgba(255,255,255,.04); color: var(--muted); font-weight: 600; text-align: left; padding: .7rem 1rem; white-space: nowrap; cursor: pointer; user-select: none; }
+  th:hover { color: var(--text); }
+  th .sort-icon { margin-left: .3rem; opacity: .4; }
+  th.sorted .sort-icon { opacity: 1; color: var(--accent); }
+  td { padding: .65rem 1rem; border-top: 1px solid var(--border); white-space: nowrap; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .positive { color: var(--green); font-weight: 600; }
+  .negative { color: var(--red); font-weight: 600; }
+
+  /* Log Terminal */
+  .terminal { background: #0a0c14; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.8rem; height: 280px; overflow-y: auto; color: #a8d8a8; }
+  .terminal .log-line { line-height: 1.6; }
+  .terminal .log-err { color: #e8534b; }
+  .terminal .log-done { color: #2ecc71; }
+
+  /* Status dot */
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: .4rem; }
+  .dot-idle { background: var(--muted); }
+  .dot-running { background: #f1c40f; animation: pulse 1s infinite; }
+  .dot-done { background: var(--green); }
+  .dot-error { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* Chart */
+  .chart-img { width: 100%; border-radius: 8px; margin-top: .5rem; display: block; }
+
+  /* Token input */
+  .token-row { display: flex; gap: .8rem; align-items: center; }
+  .token-row input { flex: 1; }
+
+  /* Progress bar */
+  .progress-bar-wrap { background: var(--bg); border-radius: 20px; height: 6px; overflow: hidden; margin-top: .6rem; }
+  .progress-bar { height: 100%; border-radius: 20px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
+
+  .section-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: .6rem; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 3rem; color: var(--muted); }
+  .empty .icon { font-size: 2.5rem; margin-bottom: .8rem; }
+
+  /* Tooltip */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after { content: attr(data-tip); position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: #2a2d3e; color: var(--text); padding: .4rem .7rem; border-radius: 6px; font-size: 0.75rem; white-space: nowrap; pointer-events: none; z-index: 999; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="logo">台股 ROIC 選股系統</div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showPage('page-screener', this)">選股設定</div>
+    <div class="nav-tab" onclick="showPage('page-results', this)">選股結果</div>
+    <div class="nav-tab" onclick="showPage('page-backtest', this)">回測結果</div>
+    <div class="nav-tab" onclick="showPage('page-demo', this)">Demo 模式</div>
+  </div>
+</nav>
+
+<div class="container">
+
+<!-- ===== PAGE: 選股設定 ===== -->
+<div id="page-screener" class="page active">
+  <div class="card">
+    <h3>API 設定</h3>
+    <div class="token-row">
+      <div class="form-group" style="flex:1">
+        <label>FinMind Token（免費申請：finmindtrade.com）</label>
+        <input type="password" id="finmind-token" placeholder="選填，有 token 可解鎖全市場掃描">
+      </div>
+      <button class="btn btn-ghost" onclick="toggleToken()">顯示/隱藏</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>選股條件調整</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label data-tip="ROIC 超過 WACC 的最低溢價">ROIC - WACC 最低溢價 <span class="range-val" id="spread-val">0%</span></label>
+        <input type="range" min="0" max="20" step="1" value="0" oninput="updateRange('spread-val', this.value, '%')" id="inp-spread">
+      </div>
+      <div class="form-group">
+        <label data-tip="最近一年的毛利率下限">毛利率門檻 <span class="range-val" id="gm-val">30%</span></label>
+        <input type="range" min="10" max="70" step="5" value="30" oninput="updateRange('gm-val', this.value, '%')" id="inp-gm">
+      </div>
+      <div class="form-group">
+        <label data-tip="投入資本近3年複合成長率下限">IC 成長率門檻 <span class="range-val" id="ic-val">0%</span></label>
+        <input type="range" min="-10" max="30" step="1" value="0" oninput="updateRange('ic-val', this.value, '%')" id="inp-ic">
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="form-row">
+      <div class="form-group">
+        <label>無風險利率 <span class="range-val" id="rf-val">1.5%</span></label>
+        <input type="range" min="0" max="5" step="0.1" value="1.5" oninput="updateRange('rf-val', this.value, '%')" id="inp-rf">
+      </div>
+      <div class="form-group">
+        <label>市場風險溢酬 <span class="range-val" id="mrp-val">5%</span></label>
+        <input type="range" min="2" max="10" step="0.5" value="5" oninput="updateRange('mrp-val', this.value, '%')" id="inp-mrp">
+      </div>
+      <div class="form-group">
+        <label>企業稅率 <span class="range-val" id="tax-val">20%</span></label>
+        <input type="range" min="10" max="30" step="1" value="20" oninput="updateRange('tax-val', this.value, '%')" id="inp-tax">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>執行</h3>
+    <div class="form-row" style="margin-bottom:1rem">
+      <button class="btn btn-primary" id="btn-screen" onclick="runScreener()">
+        <span>執行全市場選股</span>
+      </button>
+      <button class="btn btn-secondary" id="btn-backtest" onclick="runBacktest()">
+        <span>執行回測 (需先選股)</span>
+      </button>
+      <button class="btn btn-ghost" onclick="clearLogs()">清除 Log</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">
+      <span class="status-dot dot-idle" id="status-dot"></span>
+      <span id="status-text" style="font-size:.85rem;color:var(--muted)">待機中</span>
+    </div>
+    <div class="terminal" id="terminal">
+      <div class="log-line" style="color:var(--muted)">// 執行結果將顯示於此...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE: 選股結果 ===== -->
+<div id="page-results" class="page">
+  <div class="card">
+    <div class="section-title">
+      符合條件個股
+      <span class="badge badge-blue" id="result-count">0 檔</span>
+      <button class="btn btn-ghost" style="margin-left:auto;font-size:.8rem" onclick="exportCSV('selected')">匯出 CSV</button>
+      <button class="btn btn-ghost" style="font-size:.8rem" onclick="loadResults()">重新整理</button>
+    </div>
+    <div class="table-wrap">
+      <table id="tbl-selected">
+        <thead>
+          <tr>
+            <th onclick="sortTable('selected','stock_id')">股票代號 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('selected','roic')">ROIC <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('selected','wacc')">WACC <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('selected','roic_wacc_spread')">ROIC-WACC 溢價 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('selected','ic_growth')">IC 成長率 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('selected','gross_margin')">毛利率 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('selected','beta')">Beta <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-selected"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty-selected" style="display:none">
+      <div class="icon">📋</div>
+      <div>尚無選股結果，請先執行選股</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE: 回測結果 ===== -->
+<div id="page-backtest" class="page">
+  <div class="grid-3" id="backtest-stats"></div>
+  <div class="card" style="margin-top:1rem">
+    <h3>累積報酬走勢圖</h3>
+    <img id="chart-backtest" class="chart-img" src="" alt="" style="display:none">
+    <div class="empty" id="empty-chart" >
+      <div class="icon">📈</div>
+      <div>尚無回測圖表，請先執行回測</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">
+      個股回測明細
+      <button class="btn btn-ghost" style="margin-left:auto;font-size:.8rem" onclick="exportCSV('backtest')">匯出 CSV</button>
+      <button class="btn btn-ghost" style="font-size:.8rem" onclick="loadResults()">重新整理</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortTable('backtest','stock_id')">股票代號 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('backtest','start_price')">起始價 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('backtest','end_price')">結束價 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('backtest','total_return')">總報酬率 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('backtest','cagr')">年化報酬 (CAGR) <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('backtest','max_drawdown')">最大回撤 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('backtest','sharpe_ratio')">Sharpe <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-backtest"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty-backtest" style="display:none">
+      <div class="icon">📊</div>
+      <div>尚無回測結果，請先執行選股後再回測</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE: Demo 模式 ===== -->
+<div id="page-demo" class="page">
+  <div class="card">
+    <div class="section-title">Demo 模式（不需 FinMind Token）</div>
+    <p style="color:var(--muted);font-size:.88rem;margin-bottom:1rem">使用內建的 12 檔歷史高 ROIC 台股（2330、2317、2454...）直接跑 5 年回測，無需申請 API，適合快速驗證程式。</p>
+    <button class="btn btn-primary" id="btn-demo" onclick="runDemo()">執行 Demo 回測</button>
+  </div>
+  <div class="card" style="margin-top:1rem">
+    <h3>Demo 回測走勢圖</h3>
+    <img id="chart-demo" class="chart-img" src="" alt="" style="display:none">
+    <div class="empty" id="empty-demo-chart">
+      <div class="icon">📈</div>
+      <div>點擊上方按鈕執行 Demo 回測</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">
+      Demo 個股報酬
+      <button class="btn btn-ghost" style="margin-left:auto;font-size:.8rem" onclick="exportCSV('demo')">匯出 CSV</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortTable('demo','stock_id')">股票代號 <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('demo','total_return')">總報酬率 (%) <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('demo','cagr')">CAGR (%) <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('demo','max_drawdown')">最大回撤 (%) <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-demo"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty-demo" style="display:none">
+      <div class="icon">📋</div><div>尚無 Demo 結果</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+const tableData = { selected: [], backtest: [], demo: [] };
+const sortState = {};
+let pollTimer = null;
+
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+  if (id === 'page-results' || id === 'page-backtest' || id === 'page-demo') loadResults();
+}
+
+function updateRange(id, val, unit) {
+  document.getElementById(id).textContent = val + unit;
+}
+
+function toggleToken() {
+  const el = document.getElementById('finmind-token');
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function clearLogs() {
+  document.getElementById('terminal').innerHTML = '<div class="log-line" style="color:var(--muted)">// Log 已清除</div>';
+}
+
+function setStatus(s) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = 'status-dot dot-' + s;
+  const map = { idle: '待機中', running: '執行中...', done: '完成', error: '發生錯誤' };
+  txt.textContent = map[s] || s;
+  const btns = ['btn-screen', 'btn-backtest', 'btn-demo'];
+  btns.forEach(b => { const el = document.getElementById(b); if(el) el.disabled = s === 'running'; });
+}
+
+function appendLog(line) {
+  const t = document.getElementById('terminal');
+  const div = document.createElement('div');
+  div.className = 'log-line' + (line.includes('[ERROR]') || line.includes('ERROR') ? ' log-err' : line.includes('完成') || line.includes('[完成]') ? ' log-done' : '');
+  div.textContent = line;
+  t.appendChild(div);
+  t.scrollTop = t.scrollHeight;
+}
+
+let lastLogCount = 0;
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  lastLogCount = 0;
+  pollTimer = setInterval(async () => {
+    const res = await fetch('/api/logs');
+    const data = await res.json();
+    const newLines = data.logs.slice(lastLogCount);
+    newLines.forEach(appendLog);
+    lastLogCount = data.logs.length;
+    setStatus(data.status);
+    if (data.status === 'done' || data.status === 'error') {
+      clearInterval(pollTimer);
+      loadResults();
+      loadCharts();
+    }
+  }, 800);
+}
+
+async function runScreener() {
+  const payload = {
+    finmind_token: document.getElementById('finmind-token').value,
+    min_gross_margin: parseFloat(document.getElementById('inp-gm').value) / 100,
+    min_ic_growth: parseFloat(document.getElementById('inp-ic').value) / 100,
+    roic_wacc_spread: parseFloat(document.getElementById('inp-spread').value) / 100,
+  };
+  document.getElementById('terminal').innerHTML = '';
+  const res = await fetch('/api/run_screener', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) { appendLog('[ERROR] ' + data.error); return; }
+  setStatus('running');
+  startPolling();
+}
+
+async function runBacktest() {
+  document.getElementById('terminal').innerHTML = '';
+  const res = await fetch('/api/run_backtest', { method: 'POST' });
+  const data = await res.json();
+  if (data.error) { appendLog('[ERROR] ' + data.error); return; }
+  setStatus('running');
+  startPolling();
+}
+
+async function runDemo() {
+  document.getElementById('terminal').innerHTML = '';
+  const res = await fetch('/api/run_demo', { method: 'POST' });
+  const data = await res.json();
+  if (data.error) { appendLog('[ERROR] ' + data.error); return; }
+  setStatus('running');
+  startPolling();
+}
+
+async function loadResults() {
+  const res = await fetch('/api/results');
+  const data = await res.json();
+  Object.keys(data).forEach(k => { tableData[k] = data[k]; });
+  renderTable('selected');
+  renderTable('backtest');
+  renderTable('demo');
+  renderBacktestStats();
+}
+
+function renderTable(key) {
+  const rows = tableData[key];
+  const tbody = document.getElementById('tbody-' + key);
+  const empty = document.getElementById('empty-' + key);
+  if (!tbody) return;
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '';
+    if (empty) empty.style.display = '';
+    if (key === 'selected') document.getElementById('result-count').textContent = '0 檔';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  if (key === 'selected') document.getElementById('result-count').textContent = rows.length + ' 檔';
+
+  const formatters = {
+    selected: r => `<tr>
+      <td><span class="badge badge-blue">${r.stock_id}</span></td>
+      <td class="positive">${pct(r.roic)}</td>
+      <td>${pct(r.wacc)}</td>
+      <td><span class="badge badge-green">${pct(r.roic_wacc_spread)}</span></td>
+      <td class="${r.ic_growth>=0?'positive':'negative'}">${pct(r.ic_growth)}</td>
+      <td>${pct(r.gross_margin)}</td>
+      <td>${r.beta}</td></tr>`,
+    backtest: r => `<tr>
+      <td><span class="badge badge-blue">${r.stock_id}</span></td>
+      <td>${r.start_price}</td>
+      <td>${r.end_price}</td>
+      <td class="${r.total_return>=0?'positive':'negative'}">${r.total_return}%</td>
+      <td class="${r.cagr>=0?'positive':'negative'}">${r.cagr}%</td>
+      <td class="negative">${r.max_drawdown}%</td>
+      <td>${r.sharpe_ratio}</td></tr>`,
+    demo: r => `<tr>
+      <td><span class="badge badge-blue">${r.stock_id}</span></td>
+      <td class="${r.total_return>=0?'positive':'negative'}">${r.total_return}%</td>
+      <td class="${r.cagr>=0?'positive':'negative'}">${r.cagr}%</td>
+      <td class="negative">${r.max_drawdown}%</td></tr>`,
+  };
+  tbody.innerHTML = rows.map(formatters[key]).join('');
+}
+
+function renderBacktestStats() {
+  const rows = tableData['backtest'];
+  const container = document.getElementById('backtest-stats');
+  if (!container) return;
+  if (!rows || rows.length === 0) { container.innerHTML = ''; return; }
+  const avgReturn = (rows.reduce((s,r)=>s+r.total_return,0)/rows.length).toFixed(1);
+  const avgCagr = (rows.reduce((s,r)=>s+r.cagr,0)/rows.length).toFixed(1);
+  const avgMdd = (rows.reduce((s,r)=>s+r.max_drawdown,0)/rows.length).toFixed(1);
+  const avgSharpe = (rows.reduce((s,r)=>s+r.sharpe_ratio,0)/rows.length).toFixed(2);
+  const winners = rows.filter(r=>r.total_return>0).length;
+  container.innerHTML = [
+    stat('平均總報酬率', avgReturn+'%', avgReturn>0?'pos':'neg'),
+    stat('平均年化報酬 CAGR', avgCagr+'%', avgCagr>0?'pos':'neg'),
+    stat('平均最大回撤', avgMdd+'%', 'neg'),
+  ].join('');
+}
+
+function stat(label, value, cls) {
+  return `<div class="stat-card"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`;
+}
+
+function pct(v) { return (v * 100).toFixed(2) + '%'; }
+
+function loadCharts() {
+  const ts = Date.now();
+  const bt = document.getElementById('chart-backtest');
+  const dm = document.getElementById('chart-demo');
+  fetch('/api/chart/backtest').then(r=>{ if(r.ok){ bt.src='/api/chart/backtest?t='+ts; bt.style.display='block'; document.getElementById('empty-chart').style.display='none'; } });
+  fetch('/api/chart/demo').then(r=>{ if(r.ok){ dm.src='/api/chart/demo?t='+ts; dm.style.display='block'; document.getElementById('empty-demo-chart').style.display='none'; } });
+}
+
+function sortTable(key, col) {
+  const asc = sortState[key+col] !== true;
+  sortState[key+col] = asc;
+  tableData[key].sort((a,b) => asc ? a[col]-b[col]||String(a[col]).localeCompare(String(b[col])) : b[col]-a[col]||String(b[col]).localeCompare(String(a[col])));
+  renderTable(key);
+}
+
+function exportCSV(key) {
+  const rows = tableData[key];
+  if (!rows || rows.length===0) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(','), ...rows.map(r=>headers.map(h=>r[h]).join(','))].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = key+'_result.csv'; a.click();
+}
+
+// 初始化：載入圖表 & 結果
+loadResults();
+loadCharts();
+</script>
+</body>
+</html>
